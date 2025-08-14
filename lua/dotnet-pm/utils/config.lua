@@ -6,6 +6,7 @@ local M = {}
 --- Default config (add more options as needed)
 local defaults = {
 	exclude_exts = {}, -- e.g. {[".dll"]=true, [".exe"]=true}
+	explorer_width = 40, --
 }
 
 local config = vim.deepcopy(defaults)

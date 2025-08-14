@@ -3,6 +3,8 @@
 
 local parser = require("dotnet-pm.utils.parser")
 local icons = require("dotnet-pm.ui.icons")
+local paths = require("dotnet-pm.utils.paths")
+
 local M = {}
 
 -- Converts flat paths to a nested tree table
@@ -84,14 +86,21 @@ end
 -- @param sln_path string: path to the .sln file
 function M.open(sln_path)
 	-- Open in a vertical split
-	vim.cmd("vsplit")
+
+	local cfg = require("dotnet-pm.utils.config").get()
+	local width = cfg.explorer_width or 40
+	vim.cmd("botright vsplit")
+	vim.cmd("vertical resize " .. width)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_win_set_buf(0, buf)
+	vim.api.nvim_buf_set_option(buf, "wrap", false)
 
 	local lines = {
 		"dotnet-pm.nvim Solution Explorer",
 		"------------------------------",
 	}
+
+	local line_to_file = {} -- BUFFER line number => absolute file path
 
 	if not sln_path or sln_path == "" then
 		table.insert(lines, "No .sln path provided!")
@@ -103,31 +112,47 @@ function M.open(sln_path)
 			table.insert(lines, "No projects found in solution.")
 		else
 			table.insert(lines, "Projects:")
-			-- Get solution directory (for resolving project paths)
 			local sln_dir = sln_path:match("(.+)[\\/][^\\/]+$")
-			for _, proj in ipairs(projects) do
-				-- Display project line
-				table.insert(lines, "  • " .. proj.name .. " (" .. proj.path .. ")")
 
-				-- Resolve project path (absolute if already so, else relative to .sln)
-				local proj_full = proj.path
-				if not proj_full:match("^%a:[/\\]") and not proj_full:match("^/") then
-					proj_full = sln_dir .. "/" .. proj.path
+			for _, proj in ipairs(projects) do
+				table.insert(lines, "  • " .. proj.name .. " (" .. proj.path .. ")")
+				local project_absolute_path = proj.path
+				if not project_absolute_path:match("^%a:[/\\]") and not project_absolute_path:match("^/") then
+					project_absolute_path = sln_dir .. "/" .. proj.path
 				end
 
-				-- List .cs files for this project using cross-platform parser
 				local config = require("dotnet-pm.utils.config").get()
-				local files = parser.parse_csproj_files(proj_full, { exclude_exts = config.exclude_exts })
-				local file_tree = files_to_tree(files)
-				local file_lines = render_tree(file_tree, "      ")
-				for _, line in ipairs(file_lines) do
+				local files = parser.parse_csproj_files(project_absolute_path, { exclude_exts = config.exclude_exts }) -- {rel => abs}
+
+				-- For each file found in this project:
+				for rel, abs in pairs(files) do
+					local line = "      └─ " .. rel -- you can make this tree-like as needed!
 					table.insert(lines, line)
+					line_to_file[#lines] = abs -- record the buffer line to abs path mapping
 				end
 			end
 		end
 	end
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_var(buf, "dotnet_pm_line_to_file", line_to_file)
+	vim.api.nvim_buf_set_keymap(
+		buf,
+		"n",
+		"<CR>",
+		"<cmd>lua require('dotnet-pm.utils.explorer').open_file_under_cursor()<CR>",
+		{ noremap = true, silent = true }
+	)
 end
 
+function M.open_file_under_cursor()
+	local buf = vim.api.nvim_get_current_buf()
+	local line = vim.api.nvim_win_get_cursor(0)[1]
+	local ok, line_to_file = pcall(vim.api.nvim_buf_get_var, buf, "dotnet_pm_line_to_file")
+	if ok and line_to_file[line] then
+		vim.cmd("vsplit " .. vim.fn.fnameescape(line_to_file[line]))
+	else
+		vim.notify("Not a file or file not found.", vim.log.levels.WARN)
+	end
+end
 return M

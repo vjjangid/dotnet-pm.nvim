@@ -25,10 +25,13 @@ function M.parse_sln_projects(sln_path)
 	file:close()
 	return projects
 end
---- Recursively scans a directory for files, skipping common unwanted folders and filtering by extension.
--- @param base_dir string: Directory to scan
--- @param exclude_exts table|nil: Set of excluded extensions ([".dll"]=true, ...)
--- @return table: Flat paths of files (relative to base_dir) that aren't filtered out
+--- Recursively scans a directory for files, skipping unwanted folders and filtering by extension.
+-- Prints each mapping: RELATIVE -> ABSOLUTE as it discovers files
+-- @param base_dir string: Directory to scan (absolute)
+-- @param parent string|nil: Used internally for recursion (relative path)
+-- @param results table|nil: Used internally. Will be dictionary if not provided.
+-- @param exclude_exts table|nil: e.g. {[".dll"]=true, ...}
+-- @return table: [relative_file_path] = absolute_file_path
 local function scan_files(base_dir, parent, results, exclude_exts)
 	parent = parent or ""
 	results = results or {}
@@ -47,7 +50,7 @@ local function scan_files(base_dir, parent, results, exclude_exts)
 			if typ == "file" then
 				local ext = name:match("^.+(%.[a-zA-Z0-9]+)$") or ""
 				if not exclude_exts[ext] then
-					table.insert(results, rel)
+					results[rel] = full
 				end
 			elseif typ == "directory" and name ~= "bin" and name ~= "obj" and name ~= ".git" then
 				scandir(full, rel)
@@ -57,7 +60,6 @@ local function scan_files(base_dir, parent, results, exclude_exts)
 	scandir(base_dir, parent)
 	return results
 end
-
 --- Parse a .csproj file and return all relevant files (not just .cs).
 -- Supported filters via opts.exclude_exts (set of extensions to exclude)
 -- @param csproj_path string: Path to the .csproj file
@@ -69,7 +71,8 @@ function M.parse_csproj_files(csproj_path, opts)
 	local has_explicit = false
 	local explicit_exts = opts.explicit_exts or { [".cs"] = true }
 	local exclude_exts = opts.exclude_exts or {}
-
+	-- Get project root dir from csproj_path
+	local base_dir = csproj_path:match("(.+)[\\/][^\\/]+$")
 	-- Parse explicit entries (legacy)
 	local csproj_file = io.open(csproj_path, "r")
 	if csproj_file then
@@ -89,10 +92,14 @@ function M.parse_csproj_files(csproj_path, opts)
 	if has_explicit then
 		return files
 	end
+
 	-- Otherwise: scan directory for all relevant files by default
-	local base_dir = csproj_path:match("(.+)[\\/][^\\/]+$")
-	files = scan_files(base_dir, nil, nil, exclude_exts)
-	return files
+	local scanned = scan_files(base_dir, nil, nil, exclude_exts) -- scanned is a [relative] = absolute table, with prints
+	for rel, abs in pairs(scanned) do
+		files[rel] = abs
+	end
+
+	return files -- mapping {relative => absolute}end
 end
 
 return M
