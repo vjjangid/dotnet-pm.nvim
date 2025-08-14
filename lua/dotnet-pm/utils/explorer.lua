@@ -2,11 +2,8 @@
 -- Solution Explorer display logic for dotnet-pm.nvim.
 
 local parser = require("dotnet-pm.utils.parser")
-local icons = require("dotnet-pm.utils.icons")
+local icons = require("dotnet-pm.ui.icons")
 local M = {}
-
-local folder_icon = " " -- unicode folder
-local file_icon = " " -- unicode file
 
 -- Converts flat paths to a nested tree table
 local function files_to_tree(paths)
@@ -51,7 +48,7 @@ local function render_tree(node, indent, lines)
 	if indent == "      " then
 		for _, name in ipairs(folders) do
 			local child = node[name]
-			table.insert(lines, indent .. "└──  " .. folder_icon .. name)
+			table.insert(lines, indent .. "└──  " .. icons.get_folder_icon() .. name)
 			render_tree(child, indent .. "    ", lines)
 		end
 		for _, name in ipairs(files) do
@@ -73,12 +70,10 @@ local function render_tree(node, indent, lines)
 			local prefix = is_last and "└──  " or "├──  "
 			if types[i] == "folder" then
 				local child = node[name]
-				local icon = require("dotnet-pm.utils.icons")
-				table.insert(lines, indent .. prefix .. icon.pick_icon(name) .. name)
+				table.insert(lines, indent .. prefix .. icons.pick_icon(name) .. name)
 				render_tree(child, indent .. (is_last and "    " or "│   "), lines)
 			else
-				local icon = require("dotnet-pm.utils.icons")
-				table.insert(lines, indent .. prefix .. icon.pick_icon(name) .. name)
+				table.insert(lines, indent .. prefix .. icons.pick_icon(name) .. name)
 			end
 		end
 	end
